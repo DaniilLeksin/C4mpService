@@ -75,14 +75,25 @@ describe 'Campaigns Service' do
         second_changed = response[:result].last
 
         expect(response[:result].count).to eq(2)
+
         expect(first_changed['discrepancies'].count).to eq(1)
+        expect(first_changed['discrepancies'].first['description']['remote']).to eq('Description for campaign 13')
+        expect(first_changed['discrepancies'].first['description']['local']).to eq('Description for campaign 55')
+
         expect(second_changed['discrepancies'].count).to eq(2)
+        expect(second_changed['discrepancies'].first['status']['remote']).to eq('enabled')
+        expect(second_changed['discrepancies'].first['status']['local']).to eq('disabled')
+
+        expect(second_changed['discrepancies'].last['description']['remote']).to eq('Description for campaign 11')
+        expect(second_changed['discrepancies'].last['description']['local']).to eq('Description for campaign 00')
       end
     end
 
     it 'should detect missed campaign(s)' do
-      @campaigns.push('reference' => '4', 'status' => 'enabled', 'description' => 'Description for campaign 14')
-      @campaigns.push('reference' => '5', 'status' => 'enabled', 'description' => 'Description for campaign 15')
+      campaign4 = { 'reference' => '4', 'status' => 'enabled', 'description' => 'Description for campaign 14' }
+      @campaigns.push(campaign4)
+      campaign5 = { 'reference' => '5', 'status' => 'enabled', 'description' => 'Description for campaign 15' }
+      @campaigns.push(campaign5)
       allow(CampaignsService).to receive(:load_campaigns).and_return(@campaigns)
 
       VCR.use_cassette('200_response') do
@@ -90,7 +101,14 @@ describe 'Campaigns Service' do
         response = CampaignsService.call(url: url)
 
         expect(response[:result].count).to eq(2)
-        expect(response[:result].first['remote_reference']).to eq('missed')
+
+        expect(response[:result].first['remote_reference']).to eq('missed campaign')
+        expect(response[:result].first['discrepancies'].first['remote']).to eq('')
+        expect(response[:result].first['discrepancies'].first['local']).to include(campaign5)
+
+        expect(response[:result].last['remote_reference']).to eq('missed campaign')
+        expect(response[:result].last['discrepancies'].first['remote']).to eq('')
+        expect(response[:result].last['discrepancies'].first['local']).to include(campaign4)
       end
     end
 
@@ -105,10 +123,14 @@ describe 'Campaigns Service' do
 
         expect(response[:result].count).to eq(1)
         expect(response[:result].first['remote_reference']).to eq(@campaigns.first['reference'])
+        expect(response[:result].last['discrepancies'].first['local']['new_field']).to include('name' => 'new_filed_one', 'data' => 'some_data_one')
+        expect(response[:result].last['discrepancies'].last['local']['new_field']).to include('name' => 'new_filed_two', 'data' => 'some_data_two')
       end
     end
 
     it 'should detect removed campaign(s)' do
+      campaign1 = @campaigns[0]
+      campaign3 = @campaigns[2]
       @campaigns.delete_at(2)
       @campaigns.delete_at(0)
       allow(CampaignsService).to receive(:load_campaigns).and_return(@campaigns)
@@ -118,10 +140,17 @@ describe 'Campaigns Service' do
         response = CampaignsService.call(url: url)
 
         expect(response[:result].count).to eq(2)
+        expect(response[:result].first['remote_reference']).to eq('1')
+        expect(response[:result].first['discrepancies'].first['local']).to eq('')
+        expect(response[:result].first['discrepancies'].first['remote']).to include(campaign1)
+
+        expect(response[:result].last['remote_reference']).to eq('3')
+        expect(response[:result].last['discrepancies'].first['local']).to eq('')
+        expect(response[:result].last['discrepancies'].first['remote']).to include(campaign3)
       end
     end
 
-    it 'should detect removed campaign(s)' do
+    it 'should detect removed campaign fields' do
       @campaigns.first.delete('status')
       @campaigns.last.delete('description')
       allow(CampaignsService).to receive(:load_campaigns).and_return(@campaigns)
@@ -131,6 +160,13 @@ describe 'Campaigns Service' do
         response = CampaignsService.call(url: url)
 
         expect(response[:result].count).to eq(2)
+        expect(response[:result].first['remote_reference']).to eq('1')
+        expect(response[:result].first['discrepancies'].first['status']['local']).to eq('')
+        expect(response[:result].first['discrepancies'].first['status']['remote']).not_to eq('')
+
+        expect(response[:result].last['remote_reference']).to eq('3')
+        expect(response[:result].last['discrepancies'].first['description']['local']).to eq('')
+        expect(response[:result].last['discrepancies'].first['description']['remote']).not_to eq('')
       end
     end
   end

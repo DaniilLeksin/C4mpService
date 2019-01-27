@@ -24,44 +24,50 @@ class CampaignsService
     def format_it(result:, local_campaigns:, remote_campaigns:)
       formatted_result = []
       grouped_result = result.group_by { |diff| diff['path'].split('/').reject!(&:empty?).first }
-
       grouped_result.each do |k, v|
         remote_reference = remote_campaigns[k.to_i]
         discrepancies = []
-        discrepancy_item = {}
+        # discrepancy_item = {}
         v.each do |discrepancy|
+          option = discrepancy['path'].split('/').reject!(&:empty?).last
           case discrepancy['op']
           when 'replace'
-            option = discrepancy['path'].split('/').reject!(&:empty?).last
+            discrepancy_item = {}
             discrepancy_item[option] = { 'remote' => discrepancy['value'], 'local' => local_campaigns[k.to_i][option] }
             discrepancies.push(discrepancy_item)
           when 'remove'
-            if remote_reference.nil?
-              new_item_index = discrepancy['path'].split('/').reject!(&:empty?).last
-              discrepancies.push('remote' => '', 'local' => local_campaigns[new_item_index.to_i])
-            else
-              new_option = discrepancy['path'].split('/').reject!(&:empty?).last
-              discrepancies.push('remote' => '', 'local' => { new_field: { name: new_option, data: local_campaigns[k.to_i][new_option] } })
-            end
+            discrepancy_item = if remote_reference.nil?
+                                 { 'remote' => '', 'local' => local_campaigns[option.to_i] }
+                               else
+                                 {
+                                   'remote' => '',
+                                   'local' => {
+                                     'new_field' => {
+                                       'name' => option,
+                                       'data' => local_campaigns[k.to_i][option]
+                                     }
+                                   }
+                                 }
+                               end
+            discrepancies.push(discrepancy_item)
           when 'add'
             path = discrepancy['path'].split('/').reject!(&:empty?)
             if path.one?
-              discrepancies.push('remote' => discrepancy['value'], 'local' => '')
+              discrepancy_item = { 'remote' => discrepancy['value'], 'local' => '' }
             else
-              option = discrepancy['path'].split('/').reject!(&:empty?).last
+              discrepancy_item = {}
               discrepancy_item[option] = { 'remote' => discrepancy['value'], 'local' => '' }
-              discrepancies.push(discrepancy_item)
             end
+            discrepancies.push(discrepancy_item)
           else
             return { success: false, error_message: 'something strange' }
           end
         end
-        formatted_result.push ({
-          'remote_reference' => remote_reference.nil? ? 'missed' : remote_reference['reference'],
+        formatted_result.push(
+          'remote_reference' => remote_reference.nil? ? 'missed campaign' : remote_reference['reference'],
           'discrepancies' => discrepancies
-        })
+        )
       end
-
       formatted_result
     end
 
