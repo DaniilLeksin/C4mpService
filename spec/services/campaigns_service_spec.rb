@@ -60,6 +60,17 @@ describe 'Campaigns Service' do
       end
     end
 
+    it 'should detect something strang' do
+      strange_result = [{ 'op' => 'strange', 'path' => '/2/path', 'value' => 'Description' }]
+      allow(JsonDiff).to receive(:diff).and_return(strange_result)
+      VCR.use_cassette('200_response') do
+        url = 'https://mockbin.org/bin/fcb30500-7b98-476f-810d-463a0b8fc3df'
+        response = CampaignsService.call(url: url)
+        expect(response[:result]['success']).to be_falsey
+        expect(response[:result][:error_message]).to eq('something strange')
+      end
+    end
+
     it 'should detect discrepancies when field value(s) is/are changed' do
       @campaigns.first['status'] = 'disabled'
       @campaigns.first['description'] = 'Description for campaign 00'
@@ -165,6 +176,27 @@ describe 'Campaigns Service' do
         expect(response[:result].first['discrepancies'].first['status']['remote']).not_to eq('')
 
         expect(response[:result].last['remote_reference']).to eq('3')
+        expect(response[:result].last['discrepancies'].first['description']['local']).to eq('')
+        expect(response[:result].last['discrepancies'].first['description']['remote']).not_to eq('')
+      end
+    end
+
+    it 'should detect mixed changes' do
+      @campaigns.first['status'] = 'disabled'
+      @campaigns.last.delete('description')
+
+      allow(CampaignsService).to receive(:load_campaigns).and_return(@campaigns)
+
+      VCR.use_cassette('200_response') do
+        url = 'https://mockbin.org/bin/fcb30500-7b98-476f-810d-463a0b8fc3df'
+        response = CampaignsService.call(url: url)
+
+        second_changed = response[:result].first
+        expect(response[:result].count).to eq(2)
+
+        expect(second_changed['discrepancies'].first['status']['remote']).to eq('enabled')
+        expect(second_changed['discrepancies'].first['status']['local']).to eq('disabled')
+
         expect(response[:result].last['discrepancies'].first['description']['local']).to eq('')
         expect(response[:result].last['discrepancies'].first['description']['remote']).not_to eq('')
       end
